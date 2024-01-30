@@ -1,45 +1,62 @@
 import configparser
 import asyncio
 
-from gigachat import GigaChat
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
 
 from loguru import logger
+from elements.inline import what_do_choice_btn
+
+from handlers import check_litracy
+from handlers import parasitic_words
 
 config = configparser.ConfigParser()
-config.read("configs/config.ini")
-
-bot = Bot(config["SETTINGS"]["token"], parse_mode=ParseMode.HTML)
+config.read("bot/configs/config.ini")
 
 dp = Dispatcher()
 
 
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    logger.info("Bot successfully launched!")
-    await dp.start_polling(bot)
-
-
 @dp.message(Command("start"))
-async def cmd_start(message: Message):
-    await message.answer(text="Здравствуйте, Я - Telegram бот на основе GigaChat, всегда просматривающий наш с Вами чат.\n\nНапишите любое слово и я скажу является ли оно словом-паразитом, либо нет 💖!")
+async def cmd_start(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+        await state.clear()
 
-
-@dp.message(F.text)
-async def check_messages(message: Message):
-    bot_message = await message.answer("🔎 Думаю...")
-    Giga_Chat = GigaChat(
-        credentials=config["SETTINGS"]["giga_chat_token"], verify_ssl_certs=False
+    await message.answer(
+        text="<b>Привет 💝!</b>\nЧем могу тебе помочь?",
+        reply_markup=what_do_choice_btn().as_markup()
     )
-    with Giga_Chat as giga:
-        response = giga.chat(
-            f'Скажи мне, слово {message.text} является словом-паразитом? Нужен ответ только "является" или "не является"'
-        )
 
-    await bot_message.edit_text(text=response.choices[0].message.content)
+
+@dp.callback_query(F.data == "to_main_menu")
+async def cmd_back_to_start(callback_query: CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+        await state.clear()
+
+    await callback_query.message.edit_text(
+        text="<b>Привет 💝!</b>\nЧем могу тебе помочь?",
+        reply_markup=what_do_choice_btn().as_markup()
+    )
+
+
+async def main():
+    bot = Bot(config["SETTINGS"]["token"], parse_mode=ParseMode.HTML)
+    bot.config = config
+
+    # --- Подключение модулей ---
+    logger.info("Loading modules...")
+    dp.include_routers(
+        check_litracy.router,
+        parasitic_words.router
+    )
+
+    await bot.delete_webhook(drop_pending_updates=True)
+    logger.success("Bot successfully launched")
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
